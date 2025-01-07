@@ -58,10 +58,15 @@ export default function VotingApp() {
         return browserProvider;
       } catch (err) {
         console.error('Provider initialization error:', err);
-        setError('Failed to initialize provider');
+        setError(
+          'Failed to initialize provider. Please ensure MetaMask is installed and unlocked.'
+        );
         return null;
       }
     }
+    setError(
+      'MetaMask not detected. Please install MetaMask to use this DApp.'
+    );
     return null;
   }, []);
 
@@ -70,11 +75,9 @@ export default function VotingApp() {
       const browserProvider = await initializeProvider();
       if (browserProvider) {
         try {
-          // Add event listeners
           window.ethereum?.on('accountsChanged', handleAccountsChanged);
           window.ethereum?.on('chainChanged', handleChainChanged);
 
-          // Check if already connected
           const accounts = await browserProvider.listAccounts();
           if (accounts.length > 0) {
             handleAccountsChanged([accounts[0].address]);
@@ -82,10 +85,10 @@ export default function VotingApp() {
           }
         } catch (err) {
           console.error('Initialization error:', err);
-          setError('Failed to initialize the app');
+          setError(
+            'Failed to initialize the app. Please refresh and try again.'
+          );
         }
-      } else {
-        setError('Please install MetaMask to use this DApp');
       }
     };
 
@@ -111,14 +114,12 @@ export default function VotingApp() {
     try {
       const network = await browserProvider.getNetwork();
       if (network.chainId !== 1337n) {
-        // Try to switch to the Hardhat network
         try {
           await window.ethereum?.request({
             method: 'wallet_switchEthereumChain',
-            params: [{ chainId: '0x539' }], // 1337 in hex
+            params: [{ chainId: '0x539' }],
           });
         } catch (switchError: any) {
-          // This error code indicates that the chain has not been added to MetaMask
           if (switchError.code === 4902) {
             try {
               await window.ethereum?.request({
@@ -138,12 +139,16 @@ export default function VotingApp() {
               });
             } catch (addError) {
               console.error('Error adding network:', addError);
-              setError('Failed to add Hardhat network to MetaMask');
+              setError(
+                'Failed to add Hardhat network to MetaMask. Please add it manually.'
+              );
               return;
             }
           } else {
             console.error('Error switching network:', switchError);
-            setError('Failed to switch to Hardhat network');
+            setError(
+              'Failed to switch to Hardhat network. Please switch manually in MetaMask.'
+            );
             return;
           }
         }
@@ -159,40 +164,56 @@ export default function VotingApp() {
       await fetchProposals(votingContract);
     } catch (err) {
       console.error('Setup error:', err);
-      setError('Failed to setup Ethereum connection');
+      setError(
+        'Failed to setup Ethereum connection. Please ensure your wallet is connected to the correct network.'
+      );
     }
   };
 
   const connectWallet = async () => {
+    setError(null);
+    setIsLoading(true);
     try {
-      // First ensure provider is initialized
       const browserProvider = await initializeProvider();
       if (!browserProvider) {
-        setError('Failed to initialize provider');
+        setError(
+          'Failed to initialize provider. Please refresh and try again.'
+        );
         return;
       }
 
-      // Request account access
       try {
         await window.ethereum?.request({
           method: 'eth_requestAccounts',
         });
 
-        // Get the signer and set up the connection
         await setupEthereumConnection(browserProvider);
 
-        // Get the connected account
         const accounts = await browserProvider.listAccounts();
         if (accounts.length > 0) {
           setAccount(accounts[0].address);
+        } else {
+          setError('No accounts found. Please unlock your MetaMask wallet.');
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Connection error:', err);
-        setError('Failed to connect wallet');
+        if (err.code === 4001) {
+          setError(
+            'You rejected the connection request. Please try again and approve the connection.'
+          );
+        } else {
+          setError(
+            `Failed to connect wallet: ${err.message || 'Unknown error'}`
+          );
+        }
       }
     } catch (err) {
       console.error('Wallet connection error:', err);
-      setError('Failed to connect wallet');
+      setError(
+        'Failed to connect wallet. Please check your MetaMask extension and try again.'
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -211,7 +232,9 @@ export default function VotingApp() {
         );
       } catch (err) {
         console.error('Error fetching proposals:', err);
-        setError('Failed to fetch proposals');
+        setError(
+          'Failed to fetch proposals. Please ensure you are connected to the correct network.'
+        );
       }
     }
   };
@@ -219,14 +242,15 @@ export default function VotingApp() {
   const addProposal = async () => {
     if (contract && newProposal) {
       setIsLoading(true);
+      setError(null);
       try {
         const tx = await contract.addProposal(newProposal);
         await tx.wait();
         setNewProposal('');
         await fetchProposals();
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error adding proposal:', err);
-        setError('Failed to add proposal');
+        setError(`Failed to add proposal: ${err.message || 'Unknown error'}`);
       } finally {
         setIsLoading(false);
       }
@@ -236,13 +260,14 @@ export default function VotingApp() {
   const vote = async (proposalIndex: number) => {
     if (contract) {
       setIsLoading(true);
+      setError(null);
       try {
         const tx = await contract.vote(proposalIndex);
         await tx.wait();
         await fetchProposals();
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error voting:', err);
-        setError('Failed to vote');
+        setError(`Failed to vote: ${err.message || 'Unknown error'}`);
       } finally {
         setIsLoading(false);
       }
@@ -263,8 +288,12 @@ export default function VotingApp() {
       </CardHeader>
       <CardContent>
         {!account && (
-          <Button onClick={connectWallet} className='w-full mb-4'>
-            Connect MetaMask
+          <Button
+            onClick={connectWallet}
+            className='w-full mb-4'
+            disabled={isLoading}
+          >
+            {isLoading ? 'Connecting...' : 'Connect MetaMask'}
           </Button>
         )}
         {error && (
