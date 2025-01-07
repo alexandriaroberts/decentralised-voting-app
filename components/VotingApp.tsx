@@ -71,6 +71,95 @@ export default function VotingApp() {
     return null;
   }, []);
 
+  const fetchProposals = async (contractToUse = contract) => {
+    if (contractToUse) {
+      try {
+        const fetchedProposals = (await contractToUse.getProposals()) as [
+          string,
+          bigint
+        ][];
+        setProposals(
+          fetchedProposals.map(([name, voteCount]) => ({
+            name,
+            voteCount: Number(voteCount),
+          }))
+        );
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error('Error fetching proposals:', error);
+        setError(
+          'Failed to fetch proposals. Please ensure you are connected to the correct network.'
+        );
+      }
+    }
+  };
+
+  const setupEthereumConnection = useCallback(
+    async (browserProvider: ethers.BrowserProvider) => {
+      try {
+        const network = await browserProvider.getNetwork();
+        if (network.chainId !== 1337n) {
+          try {
+            await window.ethereum?.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: '0x539' }],
+            });
+          } catch (switchError: unknown) {
+            const error = switchError as Error;
+            if ('code' in error && error.code === 4902) {
+              try {
+                await window.ethereum?.request({
+                  method: 'wallet_addEthereumChain',
+                  params: [
+                    {
+                      chainId: '0x539',
+                      chainName: 'Hardhat Local',
+                      nativeCurrency: {
+                        name: 'ETH',
+                        symbol: 'ETH',
+                        decimals: 18,
+                      },
+                      rpcUrls: ['http://127.0.0.1:8545'],
+                    },
+                  ],
+                });
+              } catch (addError: unknown) {
+                const error = addError as Error;
+                console.error('Error adding network:', error);
+                setError(
+                  'Failed to add Hardhat network to MetaMask. Please add it manually.'
+                );
+                return;
+              }
+            } else {
+              console.error('Error switching network:', error);
+              setError(
+                'Failed to switch to Hardhat network. Please switch manually in MetaMask.'
+              );
+              return;
+            }
+          }
+        }
+
+        const signer = await browserProvider.getSigner();
+        const votingContract = new ethers.Contract(
+          contractAddress,
+          contractABI,
+          signer
+        );
+        setContract(votingContract);
+        await fetchProposals(votingContract);
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error('Setup error:', error);
+        setError(
+          'Failed to setup Ethereum connection. Please ensure your wallet is connected to the correct network.'
+        );
+      }
+    },
+    [fetchProposals]
+  );
+
   useEffect(() => {
     const init = async () => {
       const browserProvider = await initializeProvider();
@@ -115,71 +204,6 @@ export default function VotingApp() {
     setupEthereumConnection,
   ]);
 
-  const setupEthereumConnection = useCallback(
-    async (browserProvider: ethers.BrowserProvider) => {
-      try {
-        const network = await browserProvider.getNetwork();
-        if (network.chainId !== 1337n) {
-          try {
-            await window.ethereum?.request({
-              method: 'wallet_switchEthereumChain',
-              params: [{ chainId: '0x539' }],
-            });
-          } catch (switchError: Error) {
-            if (switchError.code === 4902) {
-              try {
-                await window.ethereum?.request({
-                  method: 'wallet_addEthereumChain',
-                  params: [
-                    {
-                      chainId: '0x539',
-                      chainName: 'Hardhat Local',
-                      nativeCurrency: {
-                        name: 'ETH',
-                        symbol: 'ETH',
-                        decimals: 18,
-                      },
-                      rpcUrls: ['http://127.0.0.1:8545'],
-                    },
-                  ],
-                });
-              } catch (addError: unknown) {
-                const error = addError as Error;
-                console.error('Error adding network:', error);
-                setError(
-                  'Failed to add Hardhat network to MetaMask. Please add it manually.'
-                );
-                return;
-              }
-            } else {
-              console.error('Error switching network:', switchError);
-              setError(
-                'Failed to switch to Hardhat network. Please switch manually in MetaMask.'
-              );
-              return;
-            }
-          }
-        }
-
-        const signer = await browserProvider.getSigner();
-        const votingContract = new ethers.Contract(
-          contractAddress,
-          contractABI,
-          signer
-        );
-        setContract(votingContract);
-        await fetchProposals(votingContract);
-      } catch (err: unknown) {
-        const error = err as Error;
-        console.error('Setup error:', error);
-        setError(
-          'Failed to setup Ethereum connection. Please ensure your wallet is connected to the correct network.'
-        );
-      }
-    },
-    []
-  );
-
   const connectWallet = async () => {
     setError(null);
     setIsLoading(true);
@@ -208,7 +232,7 @@ export default function VotingApp() {
       } catch (err: unknown) {
         const error = err as Error;
         console.error('Connection error:', error);
-        if (error.code === 4001) {
+        if ('code' in error && error.code === 4001) {
           setError(
             'You rejected the connection request. Please try again and approve the connection.'
           );
@@ -226,29 +250,6 @@ export default function VotingApp() {
       );
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const fetchProposals = async (contractToUse = contract) => {
-    if (contractToUse) {
-      try {
-        const fetchedProposals = (await contractToUse.getProposals()) as [
-          string,
-          bigint
-        ][];
-        setProposals(
-          fetchedProposals.map(([name, voteCount]) => ({
-            name,
-            voteCount: Number(voteCount),
-          }))
-        );
-      } catch (err: unknown) {
-        const error = err as Error;
-        console.error('Error fetching proposals:', error);
-        setError(
-          'Failed to fetch proposals. Please ensure you are connected to the correct network.'
-        );
-      }
     }
   };
 
