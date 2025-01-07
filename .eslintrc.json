@@ -1,0 +1,7 @@
+{
+  "extends": "next",
+  "rules": {
+    "@typescript-eslint/no-require-imports": "off",
+    "@typescript-eslint/no-explicit-any": "error"
+  }
+}
