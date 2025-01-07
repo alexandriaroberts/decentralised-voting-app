@@ -98,7 +98,7 @@ export default function VotingApp() {
     async (browserProvider: ethers.BrowserProvider) => {
       try {
         const network = await browserProvider.getNetwork();
-        if (network.chainId !== 1337n) {
+        if (network.chainId !== BigInt('1337')) {
           try {
             await window.ethereum?.request({
               method: 'wallet_switchEthereumChain',
